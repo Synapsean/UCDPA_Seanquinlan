@@ -1,0 +1,123 @@
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from urllib.request import urlretrieve
+import numpy as np
+from IPython.display import set_matplotlib_formats
+from matplotlib_inline.config import InlineBackend
+
+raw_games = pd.read_csv('all_games.csv')
+#print(raw_games.head())
+#print(raw_games.info())
+#print(raw_games.columns)
+
+# Data Cleaning
+#print(raw_games.isna().sum())
+
+# There are some games which are missing their summaries. I will replace NaN's with "No_Summary"
+raw_games['summary'].fillna('No_Summary', inplace=True)
+#print(raw_games.isnull().sum())
+
+# As they dates are formatted in words- month, day , year. I will change them to just the year
+raw_games['release_date']= pd.to_datetime(raw_games['release_date'])
+raw_games['Year'] = raw_games['release_date'].dt.year
+#print(raw_games['Year'])
+
+# There are some games that do not have user reviews which have been labelled in the csv as 'tbd'
+full_games = raw_games.drop(raw_games[raw_games['user_review'] == 'tbd'].index)
+#print(full_games[full_games['user_review']=='tbd'])
+
+# I want to see how many games were released per console (platform)
+#print(raw_games['Platform'].value_counts())
+
+# Creating a new DataFrame (df) with the amount of games released per console
+count_platform = full_games['Platform'].value_counts().reset_index()
+count_platform.columns = ['Platform', 'Count']
+#print(count_platform)
+
+sns.set_style('darkgrid')
+sns.set_context('notebook')
+g= sns.catplot(x='Count', y= 'Platform', data= count_platform, kind='bar')
+g.set_titles('Games Per Console 1995-2021')
+g.set(xlabel= 'Number of Games', ylabel= 'Console')
+g.set_xticklabels()
+plt.savefig('Fig1_Games_per_Console.png')
+
+# Next I want to see the top 10 games by meta-score and user-review. The user-review data is given as a str so I will change to a float
+full_games['user_review'] = full_games['user_review'].astype(float)
+
+# Critic Review
+critic_score = full_games.sort_values(['meta_score'], ascending=False)[:10]
+print(critic_score[['name','meta_score']])
+sns.set_style('darkgrid')
+sns.set_context('notebook')
+fig, ax = plt.subplots()
+sns.barplot(x ='meta_score', y = 'name', data= critic_score, hue='Platform', dodge=False)
+plt.xlim(95,100)
+plt.title('Top 10 Games by Critic Review ', fontsize = 16)
+plt.xlabel('Critic Review Score', fontsize = 14)
+plt.ylabel('Game', fontsize = 10)
+plt.savefig('Fig2_Critic_reviews.png', bbox_inches='tight')
+
+# User Review
+user_score = full_games.sort_values(['user_review'], ascending=False)[:10]
+print(user_score[['name','user_review']])
+sns.set_style('darkgrid')
+sns.set_context('notebook')
+fig, ax = plt.subplots()
+sns.barplot(x ='user_review', y = 'name', data= user_score, hue= 'Platform', dodge=False)
+plt.xlim(9.5,10)
+plt.title('Top 10 Games by User Review ', fontsize = 16)
+plt.xlabel('User Review Score', fontsize = 14)
+plt.ylabel('Game', fontsize =10)
+plt.savefig('Fig3_User_reviews.png', bbox_inches='tight')
+
+
+# Is there a correlation between User and Critic Scores
+consoles = ['PC', 'PlayStation 4', 'Xbox 360', 'PlayStation 2', 'Switch', 'PlayStation 3']
+top_console_counts = full_games[full_games['Platform'].isin(consoles)]
+#print(top_console_counts)
+
+sns.set_style('darkgrid')
+sns.set_context('notebook')
+fig, ax= plt.subplots()
+g= sns.lmplot(x= 'meta_score', y= 'user_review', data= top_console_counts, col='Platform', col_wrap= 2, scatter_kws={'alpha':0.5}, line_kws = {'color': 'red'}, hue='Platform', palette= 'crest')
+g.set_axis_labels('Critic Score', 'User Score')
+plt.savefig('Fig4_User_v_Critic Reviews', bbox_inches='tight')
+
+
+# Next I will merge the game review data set ("all_games.csv") with a dame sales dataset ("vgsales.csv")
+raw_game_sales = pd.read_csv('vgsales.csv')
+# print(game_sales.head())
+# print(game_sales.info())
+# print(game_sales.describe())
+# print(game_sales['Platform'].unique())
+
+game_sales = raw_game_sales.dropna()
+# print(game_sales.isna().sum())
+
+# I am only interested in total number of games sold world-wide.
+total_game_sales = game_sales.drop(['NA_Sales', 'EU_Sales', 'JP_Sales', 'Other_Sales'], axis=1)
+#print(total_game_sales.head())
+
+#print((full_games.dtypes))
+#print(total_game_sales.dtypes)
+games = full_games.merge(total_game_sales, how='inner', on='Platform', suffixes=('_1', '_2'))
+games.drop_duplicates(keep=False,inplace=True)
+#print(games.columns)
+
+sns.set_style('darkgrid')
+sns.set_context('notebook')
+g= sns.catplot(x='Genre', y='meta_score', data=games, kind='boxen', showfliers=False)
+g.ax.set_title('Genre Score')
+g.set(xlabel= 'Genre', ylabel= 'Critic Score')
+plt.xticks(rotation=45)
+plt.savefig('Fig5_Critic Score by genre', bbox_inches='tight')
+
+platform_sales= games[['Platform', 'Global_Sales']]
+platform_sales_ordered = platform_sales.sort_values(['Global_Sales'], ascending=False)
+plt.style.use('seaborn-dark')
+fig, ax= plt.subplots()
+pivot= platform_sales_ordered.pivot_table(index=['Platform'], values=['Global_Sales'], aggfunc='sum').sort_values(['Global_Sales'], ascending=False).plot(kind='bar', xlabel= 'Platform', ylabel= 'Sales in Millions', title='Global Sales by Games per Platform')
+plt.savefig('Fig6_Sales by Platform', bbox_inches='tight')
+plt.show()
